@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
-import { Fraunces, Geist } from "next/font/google";
+import { Poppins } from "next/font/google";
 import { Suspense } from "react";
 import { MenuPerfil } from "@/components/menu-perfil";
 import { Tooltip } from "@/components/tooltip";
@@ -8,7 +8,8 @@ import { Buscador, Formulario } from "@/components/buscador";
 import { BotonTema } from "@/components/boton-tema";
 import { IconoCarro } from "@/components/icono-carro";
 import { MenuCategorias } from "@/components/menu-categorias";
-import { contarCarro } from "@/lib/comunidad";
+import { CONTRASENA_DEMO, contarCarro, visitantes } from "@/lib/comunidad";
+import { VentanaIngreso } from "@/components/ventana-ingreso";
 import { obtenerCategorias } from "@/lib/datos";
 import { Logo } from "@/components/logo";
 import { Pie } from "@/components/pie";
@@ -17,14 +18,11 @@ import { SITIO_URL } from "@/lib/formato";
 import { obtenerSesion } from "@/lib/sesion";
 import "./globals.css";
 
-const geist = Geist({
-  variable: "--font-geist-sans",
+// Poppins no es fuente variable: hay que pedir cada grosor que usa el sitio.
+const poppins = Poppins({
+  variable: "--font-poppins",
   subsets: ["latin"],
-});
-
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
-  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -58,13 +56,21 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="es"
       suppressHydrationWarning
-      className={`${geist.variable} ${fraunces.variable} h-full antialiased`}
+      className={`${poppins.variable} h-full antialiased`}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: scriptTema }} />
       </head>
       <body className="flex min-h-full flex-col font-sans">
         <ProveedorToast />
+        {!visitante && (
+          <Suspense>
+            <VentanaIngreso
+              cuentasDemo={visitantes.map(({ nombre, correo }) => ({ nombre, correo }))}
+              contrasenaDemo={CONTRASENA_DEMO}
+            />
+          </Suspense>
+        )}
         <header className="border-b border-line">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-4 sm:px-6">
             <Link href="/" className="group flex shrink-0 items-center gap-2.5 font-serif text-xl tracking-tight">
@@ -112,7 +118,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                       )}
                     </Link>
                   </Tooltip>
-                  <MenuPerfil nombre={visitante.nombre} correo={visitante.correo} />
+                  <MenuPerfil nombre={visitante.nombre} foto={visitante.foto} />
                 </>
               ) : (
                 <Link

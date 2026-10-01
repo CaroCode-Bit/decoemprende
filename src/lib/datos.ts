@@ -1,3 +1,11 @@
+export const MAX_FOTOS_PRODUCTO = 8;
+
+// Sin url se dibuja un placeholder con la descripción, hasta que haya fotos reales en Supabase Storage.
+export type Foto = {
+  descripcion: string;
+  url?: string;
+};
+
 export type Producto = {
   slug: string;
   nombre: string;
@@ -6,7 +14,14 @@ export type Producto = {
   categoria: string;
   disponible: boolean;
   destacado?: boolean;
+  // La primera es la portada: es la única que se ve en las tarjetas de las listas.
+  fotos?: Foto[];
 };
+
+export function fotosDe(producto: Producto): Foto[] {
+  const fotos = producto.fotos?.slice(0, MAX_FOTOS_PRODUCTO) ?? [];
+  return fotos.length ? fotos : [{ descripcion: producto.nombre }];
+}
 
 export type Tienda = {
   slug: string;
@@ -38,6 +53,16 @@ const tiendas: Tienda[] = [
         categoria: "Textiles",
         disponible: true,
         destacado: true,
+        fotos: [
+          { descripcion: "Cojín de lino arena sobre un sofá" },
+          { descripcion: "Vista de frente" },
+          { descripcion: "Detalle de la textura del lino" },
+          { descripcion: "Cierre invisible en la costura" },
+          { descripcion: "Relleno de fibra" },
+          { descripcion: "Junto a otros cojines" },
+          { descripcion: "Medidas: 45 × 45 cm" },
+          { descripcion: "Empaque de envío" },
+        ],
       },
       {
         slug: "camino-de-mesa-natural",
@@ -73,6 +98,12 @@ const tiendas: Tienda[] = [
         categoria: "Cerámica",
         disponible: true,
         destacado: true,
+        fotos: [
+          { descripcion: "Jarrón terracota mate con flores" },
+          { descripcion: "Vista de perfil" },
+          { descripcion: "Interior sellado" },
+          { descripcion: "Base con la firma del taller" },
+        ],
       },
       {
         slug: "set-cuencos-arena",
@@ -145,6 +176,10 @@ const tiendas: Tienda[] = [
         categoria: "Arte de pared",
         disponible: true,
         destacado: true,
+        fotos: [
+          { descripcion: "Tapiz de macramé Luna colgado en la pared" },
+          { descripcion: "Detalle de los nudos" },
+        ],
       },
       {
         slug: "colgador-plantas-algodon",
@@ -289,6 +324,29 @@ function normalizar(texto: string) {
 export async function obtenerTiendasPublicas() {
   return tiendas.filter((t) => t.productos.length > 0);
 }
+
+export const CIUDADES_COLOMBIA = [
+  "Armenia",
+  "Barranquilla",
+  "Bogotá",
+  "Bucaramanga",
+  "Cali",
+  "Cartagena",
+  "Cúcuta",
+  "Ibagué",
+  "Manizales",
+  "Medellín",
+  "Montería",
+  "Neiva",
+  "Pasto",
+  "Pereira",
+  "Popayán",
+  "Santa Marta",
+  "Sincelejo",
+  "Tunja",
+  "Valledupar",
+  "Villavicencio",
+];
 
 export function slugCategoria(categoria: string) {
   return normalizar(categoria)

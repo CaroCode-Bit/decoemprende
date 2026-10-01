@@ -1,10 +1,46 @@
-import { obtenerProducto, type Producto, type Tienda } from "./datos";
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { obtenerProducto, obtenerTienda, type Producto, type Tienda } from "./datos";
+import { compartido } from "./memoria";
+
+export type NombrePublico = "completo" | "inicial";
+
+export type Direccion = {
+  id: string;
+  etiqueta: string;
+  direccion: string;
+  barrio?: string;
+  ciudad: string;
+  indicaciones?: string;
+  telefono: string;
+  predeterminada: boolean;
+};
+
+export type Notificaciones = {
+  respuestas: boolean;
+  disponibilidad: boolean;
+  novedades: boolean;
+};
+
+// Novedades va apagado por defecto: la publicidad necesita autorización expresa (Ley 1581 de 2012).
+export const NOTIFICACIONES_INICIALES: Notificaciones = {
+  respuestas: true,
+  disponibilidad: true,
+  novedades: false,
+};
+
+export const MAX_DIRECCIONES = 3;
 
 export type Visitante = {
   id: string;
   nombre: string;
   correo: string;
   ciudad: string;
+  nombrePublico?: NombrePublico;
+  // Foto ya recortada a 256×256 en el navegador, como data URL JPEG (hasta conectar Supabase Storage).
+  foto?: string;
+  correoPendiente?: { correo: string; token: string; expira: string };
+  direcciones?: Direccion[];
+  notificaciones?: Notificaciones;
 };
 
 export type Comentario = {
@@ -35,16 +71,16 @@ type Guardado = {
 // Datos de ejemplo en memoria hasta conectar Supabase: los cambios se pierden al reiniciar el servidor.
 export const CONTRASENA_DEMO = "demo1234";
 
-export const visitantes: Visitante[] = [
+export const visitantes = compartido<Visitante[]>("visitantes", [
   { id: "v1", nombre: "Laura Gómez", correo: "laura@example.com", ciudad: "Bogotá" },
   { id: "v2", nombre: "Andrés Ruiz", correo: "andres@example.com", ciudad: "Medellín" },
   { id: "v3", nombre: "Camila Torres", correo: "camila@example.com", ciudad: "Cali" },
   { id: "v4", nombre: "Santiago Mejía", correo: "santiago@example.com", ciudad: "Barranquilla" },
   { id: "v5", nombre: "Valentina Rojas", correo: "valentina@example.com", ciudad: "Bucaramanga" },
   { id: "v6", nombre: "Mateo Herrera", correo: "mateo@example.com", ciudad: "Pereira" },
-];
+]);
 
-const calificaciones: Calificacion[] = [
+const calificaciones = compartido<Calificacion[]>("calificaciones", [
   { visitanteId: "v1", tienda: "casa-lino", producto: "cojin-lino-arena", estrellas: 5 },
   { visitanteId: "v2", tienda: "casa-lino", producto: "cojin-lino-arena", estrellas: 4 },
   { visitanteId: "v3", tienda: "casa-lino", producto: "cojin-lino-arena", estrellas: 5 },
@@ -63,9 +99,9 @@ const calificaciones: Calificacion[] = [
   { visitanteId: "v6", tienda: "papel-y-muro", producto: "lamina-botanica-a3", estrellas: 5 },
   { visitanteId: "v4", tienda: "madera-serena", producto: "banco-pino-natural", estrellas: 5 },
   { visitanteId: "v5", tienda: "madera-serena", producto: "banco-pino-natural", estrellas: 4 },
-];
+]);
 
-const comentarios: Comentario[] = [
+const comentarios = compartido<Comentario[]>("comentarios", [
   {
     id: "c1",
     visitanteId: "v2",
@@ -127,20 +163,197 @@ const comentarios: Comentario[] = [
     texto: "Tardaron un poco en responder, pero el banco quedó perfecto.",
     fecha: "2026-09-27T18:45:00.000Z",
   },
-];
+]);
 
-const guardados: Guardado[] = [
+const guardados = compartido<Guardado[]>("guardados", [
   { visitanteId: "v1", tienda: "luz-de-madera", producto: "lampara-colgante-roble" },
   { visitanteId: "v1", tienda: "hilo-y-nudo", producto: "tapiz-macrame-luna" },
-];
+]);
+
+// Contraseñas cambiadas por el visitante, guardadas como "sal:hash" (scrypt). Sin entrada, vale la de demo.
+const contrasenas = compartido("contrasenas", new Map<string, string>());
+
+function hashear(contrasena: string) {
+  const sal = randomBytes(16).toString("hex");
+  return `${sal}:${scryptSync(contrasena, sal, 64).toString("hex")}`;
+}
+
+function contrasenaValida(visitanteId: string, contrasena: string) {
+  const guardada = contrasenas.get(visitanteId);
+  if (!guardada) return contrasena === CONTRASENA_DEMO;
+  const [sal, hash] = guardada.split(":");
+  return timingSafeEqual(scryptSync(contrasena, sal, 64), Buffer.from(hash, "hex"));
+}
 
 export async function verificarCredenciales(correo: string, contrasena: string) {
   const visitante = visitantes.find((v) => v.correo === correo);
-  return visitante && contrasena === CONTRASENA_DEMO ? visitante : undefined;
+  return visitante && contrasenaValida(visitante.id, contrasena) ? visitante : undefined;
 }
 
 export async function obtenerVisitante(id: string) {
   return visitantes.find((v) => v.id === id);
+}
+
+// "Andrés Ruiz" se muestra como "Andrés R." si el visitante lo pidió en Privacidad.
+export function nombreVisible(visitante: Visitante) {
+  if (visitante.nombrePublico !== "inicial") return visitante.nombre;
+  const [nombre, ...resto] = visitante.nombre.trim().split(/\s+/);
+  const apellido = resto.at(-1);
+  return apellido ? `${nombre} ${apellido[0]}.` : nombre;
+}
+
+export async function actualizarPerfil(visitanteId: string, nombre: string, ciudad: string) {
+  const visitante = await obtenerVisitante(visitanteId);
+  if (!visitante) return;
+  visitante.nombre = nombre;
+  visitante.ciudad = ciudad;
+}
+
+export async function actualizarPrivacidad(visitanteId: string, nombrePublico: NombrePublico) {
+  const visitante = await obtenerVisitante(visitanteId);
+  if (visitante) visitante.nombrePublico = nombrePublico;
+}
+
+export async function actualizarFoto(visitanteId: string, foto: string | undefined) {
+  const visitante = await obtenerVisitante(visitanteId);
+  if (visitante) visitante.foto = foto;
+}
+
+export async function actualizarNotificaciones(visitanteId: string, notificaciones: Notificaciones) {
+  const visitante = await obtenerVisitante(visitanteId);
+  if (visitante) visitante.notificaciones = notificaciones;
+}
+
+export async function contrasenaCorrecta(visitanteId: string, contrasena: string) {
+  return contrasenaValida(visitanteId, contrasena);
+}
+
+export async function correoEnUso(correo: string, salvoVisitanteId?: string) {
+  return visitantes.some(
+    (v) =>
+      v.id !== salvoVisitanteId &&
+      (v.correo === correo || v.correoPendiente?.correo === correo),
+  );
+}
+
+const HORAS_PARA_CONFIRMAR = 24;
+
+// El correo no cambia hasta que se abre el enlace que llega a la dirección nueva.
+export async function solicitarCambioCorreo(visitanteId: string, correo: string) {
+  const visitante = await obtenerVisitante(visitanteId);
+  if (!visitante) return undefined;
+  const token = randomBytes(24).toString("base64url");
+  const expira = new Date(Date.now() + HORAS_PARA_CONFIRMAR * 3600 * 1000).toISOString();
+  visitante.correoPendiente = { correo, token, expira };
+  return token;
+}
+
+export async function cancelarCambioCorreo(visitanteId: string) {
+  const visitante = await obtenerVisitante(visitanteId);
+  if (visitante) visitante.correoPendiente = undefined;
+}
+
+export async function confirmarCambioCorreo(token: string) {
+  const visitante = visitantes.find((v) => v.correoPendiente?.token === token);
+  const pendiente = visitante?.correoPendiente;
+  if (!visitante || !pendiente) return "invalido";
+  visitante.correoPendiente = undefined;
+  if (pendiente.expira < new Date().toISOString()) return "vencido";
+  if (visitantes.some((v) => v.id !== visitante.id && v.correo === pendiente.correo)) return "en-uso";
+  visitante.correo = pendiente.correo;
+  return "ok";
+}
+
+export async function guardarDireccion(
+  visitanteId: string,
+  datos: Omit<Direccion, "id" | "predeterminada">,
+  direccionId?: string,
+) {
+  const visitante = await obtenerVisitante(visitanteId);
+  if (!visitante) return false;
+  const lista = (visitante.direcciones ??= []);
+  const existente = direccionId ? lista.find((d) => d.id === direccionId) : undefined;
+  if (existente) {
+    Object.assign(existente, datos);
+    return true;
+  }
+  if (lista.length >= MAX_DIRECCIONES) return false;
+  lista.push({ ...datos, id: crypto.randomUUID(), predeterminada: lista.length === 0 });
+  return true;
+}
+
+export async function eliminarDireccion(visitanteId: string, direccionId: string) {
+  const visitante = await obtenerVisitante(visitanteId);
+  const lista = visitante?.direcciones;
+  if (!lista) return;
+  const indice = lista.findIndex((d) => d.id === direccionId);
+  if (indice === -1) return;
+  const [quitada] = lista.splice(indice, 1);
+  if (quitada.predeterminada && lista[0]) lista[0].predeterminada = true;
+}
+
+export async function marcarPredeterminada(visitanteId: string, direccionId: string) {
+  const visitante = await obtenerVisitante(visitanteId);
+  const lista = visitante?.direcciones;
+  if (!lista?.some((d) => d.id === direccionId)) return;
+  for (const d of lista) d.predeterminada = d.id === direccionId;
+}
+
+export async function cambiarContrasena(visitanteId: string, actual: string, nueva: string) {
+  if (!contrasenaValida(visitanteId, actual)) return false;
+  contrasenas.set(visitanteId, hashear(nueva));
+  return true;
+}
+
+function quitarDe<T>(lista: T[], debeIrse: (elemento: T) => boolean) {
+  for (let i = lista.length - 1; i >= 0; i--) if (debeIrse(lista[i])) lista.splice(i, 1);
+}
+
+// Borra la cuenta y todo lo que dejó en la plataforma (derecho de supresión, Ley 1581 de 2012).
+export async function eliminarCuenta(visitanteId: string) {
+  const deEste = (x: { visitanteId: string }) => x.visitanteId === visitanteId;
+  quitarDe(calificaciones, deEste);
+  quitarDe(comentarios, deEste);
+  quitarDe(guardados, deEste);
+  quitarDe(carro, deEste);
+  quitarDe(visitantes, (v) => v.id === visitanteId);
+  contrasenas.delete(visitanteId);
+}
+
+export async function exportarDatos(visitanteId: string) {
+  const visitante = await obtenerVisitante(visitanteId);
+  if (!visitante) return undefined;
+  const deEste = (x: { visitanteId: string }) => x.visitanteId === visitanteId;
+  return {
+    exportado: new Date().toISOString(),
+    perfil: {
+      nombre: visitante.nombre,
+      correo: visitante.correo,
+      ciudad: visitante.ciudad,
+      nombrePublico: visitante.nombrePublico ?? "completo",
+      foto: visitante.foto ?? null,
+    },
+    direcciones: (visitante.direcciones ?? []).map(
+      ({ etiqueta, direccion, barrio, ciudad, indicaciones, telefono, predeterminada }) => ({
+        etiqueta,
+        direccion,
+        barrio,
+        ciudad,
+        indicaciones,
+        telefono,
+        predeterminada,
+      }),
+    ),
+    notificaciones: visitante.notificaciones ?? NOTIFICACIONES_INICIALES,
+    calificaciones: calificaciones
+      .filter(deEste)
+      .map(({ tienda, producto, estrellas }) => ({ tienda, producto, estrellas })),
+    comentarios: comentarios
+      .filter(deEste)
+      .map(({ tienda, producto, texto, fecha }) => ({ tienda, producto, texto, fecha })),
+    favoritos: guardados.filter(deEste).map(({ tienda, producto }) => ({ tienda, producto })),
+    carro: carro.filter(deEste).map(({ tienda, producto, cantidad }) => ({ tienda, producto, cantidad })),
+  };
 }
 
 // Sin producto, resume todas las calificaciones de los productos de la tienda.
@@ -181,10 +394,10 @@ export async function obtenerComentarios(
   return comentarios
     .filter((c) => c.tienda === tienda && c.producto === producto)
     .sort((a, b) => b.fecha.localeCompare(a.fecha))
-    .map((c) => ({
-      ...c,
-      autor: visitantes.find((v) => v.id === c.visitanteId)?.nombre ?? "Visitante",
-    }));
+    .map((c) => {
+      const autor = visitantes.find((v) => v.id === c.visitanteId);
+      return { ...c, autor: autor ? nombreVisible(autor) : "Visitante" };
+    });
 }
 
 export async function agregarComentario(
@@ -225,6 +438,36 @@ export async function alternarGuardado(visitanteId: string, tienda: string, prod
   else guardados.splice(indice, 1);
 }
 
+export async function obtenerActividad(visitanteId: string) {
+  const misCalificaciones = (
+    await Promise.all(
+      calificaciones
+        .filter((c) => c.visitanteId === visitanteId)
+        .map(async (c) => {
+          const encontrado = await obtenerProducto(c.tienda, c.producto);
+          return encontrado && { ...encontrado, estrellas: c.estrellas };
+        }),
+    )
+  ).filter((c) => c !== undefined);
+
+  const misComentarios = (
+    await Promise.all(
+      comentarios
+        .filter((c) => c.visitanteId === visitanteId)
+        .sort((a, b) => b.fecha.localeCompare(a.fecha))
+        .map(async (c) => {
+          const tienda = await obtenerTienda(c.tienda);
+          const producto = c.producto
+            ? tienda?.productos.find((p) => p.slug === c.producto)
+            : undefined;
+          return tienda && { id: c.id, texto: c.texto, fecha: c.fecha, tienda, producto };
+        }),
+    )
+  ).filter((c) => c !== undefined);
+
+  return { calificaciones: misCalificaciones, comentarios: misComentarios };
+}
+
 type ItemCarro = {
   visitanteId: string;
   tienda: string;
@@ -234,7 +477,7 @@ type ItemCarro = {
 
 export const MAX_CANTIDAD = 20;
 
-const carro: ItemCarro[] = [];
+const carro = compartido<ItemCarro[]>("carro", []);
 
 function buscarEnCarro(visitanteId: string, tienda: string, producto: string) {
   return carro.find(

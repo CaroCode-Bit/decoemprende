@@ -4,8 +4,9 @@ import Link from "next/link";
 import { accionAlternarGuardado } from "@/app/acciones";
 import type { Producto, Tienda } from "@/lib/datos";
 import { formatearPrecio, formatearPromedio } from "@/lib/formato";
-import { enlaceIngresar, rutaDe } from "@/lib/rutas";
+import { rutaDe } from "@/lib/rutas";
 import { IconoEstrella } from "./estrellas";
+import { abrirIngreso } from "./ventana-ingreso";
 import { ImagenPlaceholder } from "./imagen-placeholder";
 import { mostrarToast } from "./toast";
 import { Tooltip } from "./tooltip";
@@ -34,7 +35,7 @@ export function TarjetaProductoCliente({
   async function manejarGuardar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!conSesion) {
-      window.location.href = enlaceIngresar(ruta);
+      abrirIngreso();
       return;
     }
     const formData = new FormData(e.currentTarget);

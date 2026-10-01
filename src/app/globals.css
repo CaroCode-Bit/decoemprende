@@ -45,8 +45,13 @@
   --color-muted: var(--muted);
   --color-line: var(--line);
   --color-accent: var(--accent);
-  --font-sans: var(--font-geist-sans);
-  --font-serif: var(--font-fraunces);
+  --font-sans: var(--font-poppins);
+  --font-serif: var(--font-poppins);
+
+  /* Esquinas bien redondeadas en todo el sitio (Tailwind trae 4, 6 y 12 px). */
+  --radius-sm: 0.875rem;
+  --radius-md: 1rem;
+  --radius-xl: 1.75rem;
 }
 
 body {
@@ -81,11 +86,55 @@ body {
   transform: scale(0.9);
 }
 
+@keyframes aparecer-foto {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [class*="aparecer-foto"] {
+    animation: none;
+  }
+}
+
 @keyframes aparecer {
   from {
     opacity: 0;
     transform: translateY(12px);
   }
+}
+
+@keyframes ventana-entra {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+
+@keyframes fondo-entra {
+  from {
+    opacity: 0;
+  }
+}
+
+.ventana-ingreso[open] {
+  animation: ventana-entra 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ventana-ingreso[open]::backdrop {
+  animation: fondo-entra 220ms ease-out;
+}
+
+@keyframes paso-entra {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+.aparecer-paso {
+  animation: paso-entra 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .aparecer,

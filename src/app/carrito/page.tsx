@@ -5,7 +5,7 @@ import { accionCambiarCantidad } from "@/app/acciones";
 import { BotonWhatsApp } from "@/components/boton-whatsapp";
 import { IconoCarro } from "@/components/icono-carro";
 import { ImagenPlaceholder } from "@/components/imagen-placeholder";
-import { MAX_CANTIDAD, obtenerCarro } from "@/lib/comunidad";
+import { MAX_CANTIDAD, obtenerCarro, type Direccion } from "@/lib/comunidad";
 import type { Producto, Tienda } from "@/lib/datos";
 import { formatearPrecio } from "@/lib/formato";
 import { enlaceIngresar, rutaDe } from "@/lib/rutas";
@@ -22,25 +22,48 @@ type Grupo = {
   subtotal: number;
 };
 
-function mensajePedido({ tienda, items, subtotal }: Grupo) {
+function mensajePedido({ tienda, items, subtotal }: Grupo, entrega?: Direccion) {
   const lineas = items.map(
     ({ producto, cantidad }) =>
       `- ${cantidad} × ${producto.nombre} (${formatearPrecio(producto.precio * cantidad)})`,
   );
+  const datosEntrega = entrega
+    ? [
+        "",
+        "Entregar en:",
+        entrega.direccion,
+        [entrega.barrio, entrega.ciudad].filter(Boolean).join(", "),
+        ...(entrega.indicaciones ? [`Indicaciones: ${entrega.indicaciones}`] : []),
+        `Cel. ${entrega.telefono}`,
+        "",
+      ]
+    : [];
   return [
     `Hola, ${tienda.nombre}. Vi tu tienda en DecoEmprende y quiero pedir:`,
     ...lineas,
     `Total: ${formatearPrecio(subtotal)}`,
-    "¿Está disponible? ¿Cómo coordinamos el pago y el envío?",
+    ...datosEntrega,
+    entrega ? "¿Está disponible? ¿Cómo coordinamos el pago?" : "¿Está disponible? ¿Cómo coordinamos el pago y el envío?",
   ].join("\n");
 }
 
-export default async function Carrito() {
+type Props = {
+  searchParams: Promise<{ entrega?: string }>;
+};
+
+export default async function Carrito({ searchParams }: Props) {
   const visitante = await obtenerSesion();
   if (!visitante) redirect(enlaceIngresar("/carrito"));
 
   const grupos = await obtenerCarro(visitante.id);
   const total = grupos.reduce((suma, g) => suma + g.subtotal, 0);
+
+  const { entrega: elegida } = await searchParams;
+  const direcciones = visitante.direcciones ?? [];
+  const entrega =
+    elegida === "ninguna"
+      ? undefined
+      : (direcciones.find((d) => d.id === elegida) ?? direcciones.find((d) => d.predeterminada));
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 sm:py-16">
@@ -66,7 +89,63 @@ export default async function Carrito() {
         </div>
       ) : (
         <>
-          <div className="mt-10 space-y-8">
+          <section aria-labelledby="titulo-entrega" className="mt-10 rounded-sm border border-line p-4 sm:p-5">
+            <h2 id="titulo-entrega" className="text-sm font-medium">
+              ¿A dónde te lo envían?
+            </h2>
+            {direcciones.length === 0 ? (
+              <p className="mt-1 text-sm text-muted">
+                Guarda una dirección para incluirla en tus pedidos.{" "}
+                <Link
+                  href="/configuracion?seccion=direcciones"
+                  className="text-foreground underline-offset-4 hover:underline"
+                >
+                  Añadir dirección
+                </Link>
+              </p>
+            ) : (
+              <>
+                <p className="mt-1 text-xs text-muted">
+                  La dirección elegida va dentro del mensaje de WhatsApp de cada tienda.
+                </p>
+                <ul className="mt-3 flex flex-wrap gap-2">
+                  {[...direcciones.map((d) => ({ id: d.id, texto: d.etiqueta })), { id: "ninguna", texto: "No incluir" }].map(
+                    (opcion) => {
+                      const activa = opcion.id === "ninguna" ? !entrega : entrega?.id === opcion.id;
+                      return (
+                        <li key={opcion.id}>
+                          <Link
+                            href={`/carrito?entrega=${opcion.id}`}
+                            scroll={false}
+                            replace
+                            aria-current={activa ? "true" : undefined}
+                            className={`inline-flex rounded-full border px-4 py-1.5 text-sm transition-colors ${
+                              activa
+                                ? "border-foreground bg-foreground text-background"
+                                : "border-line text-muted hover:border-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {opcion.texto}
+                          </Link>
+                        </li>
+                      );
+                    },
+                  )}
+                </ul>
+                {entrega && (
+                  <p className="mt-3 text-sm">
+                    {entrega.direccion}
+                    <span className="text-muted">
+                      {" "}
+                      · {[entrega.barrio, entrega.ciudad].filter(Boolean).join(", ")} · Cel. {entrega.telefono}
+                    </span>
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+
+          <div className="mt-8 space-y-8">
             {grupos.map((grupo) => (
               <section key={grupo.tienda.slug} className="aparecer border border-line">
                 <header className="flex items-baseline justify-between gap-4 border-b border-line px-4 py-3 sm:px-5">
@@ -116,7 +195,7 @@ export default async function Carrito() {
                   <p className="text-sm">
                     Subtotal <span className="font-medium">{formatearPrecio(grupo.subtotal)}</span>
                   </p>
-                  <BotonWhatsApp numero={grupo.tienda.whatsapp} mensaje={mensajePedido(grupo)}>
+                  <BotonWhatsApp numero={grupo.tienda.whatsapp} mensaje={mensajePedido(grupo, entrega)}>
                     Pedir por WhatsApp a {grupo.tienda.nombre}
                   </BotonWhatsApp>
                 </footer>

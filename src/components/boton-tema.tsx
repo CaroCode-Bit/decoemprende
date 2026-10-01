@@ -1,20 +1,11 @@
 "use client";
 
+import { aplicarTema } from "@/lib/tema";
 import { Tooltip } from "./tooltip";
 
 export function BotonTema() {
   function alternar() {
-    const raiz = document.documentElement;
-    const siguiente = raiz.dataset.theme === "dark" ? "light" : "dark";
-
-    raiz.classList.add("cambiando-tema");
-    raiz.dataset.theme = siguiente;
-    try {
-      localStorage.setItem("tema", siguiente);
-    } catch {
-      // Sin almacenamiento (modo privado): el tema dura solo esta visita.
-    }
-    window.setTimeout(() => raiz.classList.remove("cambiando-tema"), 300);
+    aplicarTema(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
   }
 
   return (

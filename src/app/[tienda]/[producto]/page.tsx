@@ -8,7 +8,8 @@ import { FormCalificar } from "@/components/form-calificar";
 import { ImagenPlaceholder } from "@/components/imagen-placeholder";
 import { SeccionOpiniones } from "@/components/seccion-opiniones";
 import { calificacionDe, estaGuardado, obtenerResumen } from "@/lib/comunidad";
-import { obtenerProducto } from "@/lib/datos";
+import { fotosDe, obtenerProducto } from "@/lib/datos";
+import { GaleriaProducto } from "@/components/galeria-producto";
 import { SITIO_URL, formatearPrecio } from "@/lib/formato";
 import { enlaceIngresar, rutaDe } from "@/lib/rutas";
 import { obtenerSesion } from "@/lib/sesion";
@@ -58,11 +59,7 @@ export default async function PaginaProducto({ params }: Props) {
       </nav>
 
       <div className="mt-6 grid gap-8 md:grid-cols-2 md:gap-12">
-        <ImagenPlaceholder
-          texto={producto.nombre}
-          color={tienda.color}
-          className="aparecer aspect-[4/5] rounded-sm"
-        />
+        <GaleriaProducto fotos={fotosDe(producto)} color={tienda.color} nombre={producto.nombre} />
 
         <div className="aparecer md:py-6 [animation-delay:100ms]">
           <p className="text-xs uppercase tracking-widest text-muted">{producto.categoria}</p>
